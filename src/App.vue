@@ -1,14 +1,14 @@
 <template>
-  <ConcatMapTest />
+  <SwitchMapTest />
 </template>
 
 <script>
-import ConcatMapTest from './components/ConcatMap/ConcatMapTest.vue'
+import SwitchMapTest from './components/SwitchMap/SwitchMapTest.vue'
 
 export default {
   name: 'App',
   components: {
-    ConcatMapTest
+    SwitchMapTest
   }
 }
 </script>
