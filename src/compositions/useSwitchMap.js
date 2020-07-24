@@ -35,8 +35,8 @@ export function useSwitchMap(ref, projectionFromValuesToRefs) {
                 track()
                 return projectedRef.value
             },
-            // swicthMapRef should never be directly updated because it's value strictly depends on ref.value updates
-            // it will be overwritten as soon as ref.value changes
+            // swicthMapRef should never be directly updated because it's value strictly depends on ref.value and projectedRef.valueupdates
+            // it will be overwritten as soon as ref.value / projectedRef.value changes
             set() {}
         }
 
