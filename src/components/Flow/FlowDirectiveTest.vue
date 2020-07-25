@@ -1,9 +1,15 @@
 <template>
-  <h1>FlowDirective Test</h1>
-  <counter v-flow:click.stop="eventRef" />
-  <button v-flow:click.stop="eventRef">Wuo uo ho!</button>
-  <simple-emitter v-flow:click.stop="eventRef"/>
-  <pre style="text-align: left; white-space: pre-line;">{{ stringifyEvent(eventRef.value) }}</pre>
+    <div>
+        <h1>FlowDirective Test</h1>
+        <counter v-flow:click.stop="eventRef" />
+        <h3>Write and let the magic happen!</h3>
+        <input type="text" v-flow:input.extract="inputValueRef" />
+        <simple-emitter v-flow:click.stop="eventRef"/>
+        <div style="display: flex; flex-flow: row nowrap; justify-content: space-around">
+            <div><pre style="text-align: left; white-space: pre-line;">{{ stringifyEvent(eventRef.value) }}</pre></div>
+            <div><span> {{ inputValueRef.value }} </span></div>
+        </div>
+    </div>
 </template>
 
 
@@ -22,6 +28,7 @@ export default {
     },
     setup() {
         const eventRef = notUnwrappableRef({})
+        const inputValueRef = notUnwrappableRef(null)
 
 
         function stringifyEvent(e) {
@@ -38,7 +45,7 @@ export default {
             }, 2);
         }
 
-        return { eventRef, stringifyEvent }
+        return { eventRef, inputValueRef, stringifyEvent }
     }
 }
 </script>
