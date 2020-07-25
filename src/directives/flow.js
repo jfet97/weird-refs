@@ -3,7 +3,7 @@ import { warn, isReactive } from "vue"
 // ----------------------------------------------------------------------------------------------------
 // map each supported modifier to the correspondent function that modify the event
 // native is supported as well, but it does not change the event itself
-// value modifier will extract the target.value if it is not a vue event
+// extract modifier will extract the target.value if it is not a vue event
 const modifiersFunctions = Object.freeze({
     stop: e => e.stopPropagation(),
     prevent: e => e.preventDefault()
@@ -14,8 +14,8 @@ const createFlowModifiers = (modifiers, isVueComponent) => {
     // track if the directive was applied to a native element || the native modifier was used
     const isNative = modifiers.native !== undefined || isVueComponent === false
 
-    // track if the value modifier was selected and if it can be applied
-    const useValue = isNative && modifiers.value
+    // track if the extract modifier was selected and if it can be applied
+    const useExtract = isNative && modifiers.extract
 
     // return the selected modifiers functions inside an array, discarding not supported ones
     const eventModifiersFnsArray = Object.keys(modifiers).map(m => modifiersFunctions[m]).filter(x => x)
@@ -24,7 +24,7 @@ const createFlowModifiers = (modifiers, isVueComponent) => {
         fns: eventModifiersFnsArray,
         static: {
             isNative,
-            useValue
+            useExtract
         }
     })
 }
@@ -32,7 +32,7 @@ const createFlowModifiers = (modifiers, isVueComponent) => {
 const applyFnsModifiersToEvent = (flowModifiers, e) => flowModifiers.fns.forEach(m => m(e))
 
 const isNative = (flowModifiers) => flowModifiers.static.isNative
-const useValue = (flowModifiers) => flowModifiers.static.useValue
+const useExtract = (flowModifiers) => flowModifiers.static.useExtract
 
 // ----------------------------------------------------------------------------------------------------
 
@@ -103,7 +103,7 @@ const makeListener = (flowModifiers) => (ref) => (event) => {
 
     let newVal = event;
 
-    if (isNative(flowModifiers) && useValue(flowModifiers)) {
+    if (isNative(flowModifiers) && useExtract(flowModifiers)) {
         newVal = event.target.value
     }
 
