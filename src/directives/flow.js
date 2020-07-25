@@ -3,15 +3,37 @@ import { warn, isReactive } from "vue"
 // ----------------------------------------------------------------------------------------------------
 // map each supported modifier to the correspondent function that modify the event
 // native is supported as well, but it does not change the event itself
+// value modifier will extract the target.value if it is not a vue event
 const modifiersFunctions = Object.freeze({
     stop: e => e.stopPropagation(),
     prevent: e => e.preventDefault()
 })
 
-// return the selected modifiers functions inside an array, discarding not supported ones
-const getModifiersFunctionsArray = (modifiers) => Object.keys(modifiers).map(m => modifiersFunctions[m]).filter(x => x)
+const createFlowModifiers = (modifiers, isVueComponent) => {
 
-const applyModifiersToEvent = (modifiersArray) => (e) => modifiersArray.forEach(m => m(e))
+    // track if the directive was applied to a native element || the native modifier was used
+    const isNative = modifiers.native !== undefined || isVueComponent === false
+
+    // track if the value modifier was selected and if it can be applied
+    const useValue = isNative && modifiers.value
+
+    // return the selected modifiers functions inside an array, discarding not supported ones
+    const eventModifiersFnsArray = Object.keys(modifiers).map(m => modifiersFunctions[m]).filter(x => x)
+
+    return ({
+        fns: eventModifiersFnsArray,
+        static: {
+            isNative,
+            useValue
+        }
+    })
+}
+
+const applyFnsModifiersToEvent = (flowModifiers, e) => flowModifiers.fns.forEach(m => m(e))
+
+const isNative = (flowModifiers) => flowModifiers.static.isNative
+const useValue = (flowModifiers) => flowModifiers.static.useValue
+
 // ----------------------------------------------------------------------------------------------------
 
 
@@ -24,7 +46,7 @@ const checkValueArg = (value, arg, vnode) => {
             vnode.context
         )
 
-        return -1;
+        return -1
     }
 
     if (arg === undefined) {
@@ -32,7 +54,7 @@ const checkValueArg = (value, arg, vnode) => {
             `Invalid arg found in v-flow directive. This directive must be used with an arg.`,
             vnode.context
         )
-        return -1;
+        return -1
     }
 
     return 0
@@ -47,22 +69,22 @@ const destructureBinding = ({ value: ref, arg: event, modifiers }) => ({ ref, ev
 
 
 // ----------------------------------------------------------------------------------------------------
-// private cleanup/update data stored for the cleanup/update phase using a unique key for identifying
+// private context data stored for further operations using a unique key for identifying
 // multiple v-flow directives on the same node
 
 const hashBinding = binding => [binding.arg].concat(Object.keys(binding.modifiers)).join(':')
 
 const createPrivateBindingsHashMap = (el) => el._vflowBHM = {}
 
-const setPrivateBindingsHashMap = (el) => (binding) => (cleanupStuff) => {
+const setPrivateBindingsHashMap = (el, binding, context) => {
     if (el._vflowBHM === undefined) {
         createPrivateBindingsHashMap(el)
     }
 
-    el[hashBinding(binding)] = cleanupStuff
+    el[hashBinding(binding)] = context
 }
 
-const getPrivateBindingsHashMap = (el) => (binding) => {
+const getPrivateBindingsHashMap = (el, binding) => {
     if (el._vflowBHM === undefined) {
         return null
     }
@@ -75,59 +97,70 @@ const getPrivateBindingsHashMap = (el) => (binding) => {
 // ----------------------------------------------------------------------------------------------------
 // create a listener
 
-const makeListener = (modifiersArray) => (ref) => (event) => {
-    applyModifiersToEvent(modifiersArray)(event)
-    ref.value = event
+const makeListener = (flowModifiers) => (ref) => (event) => {
+
+    applyFnsModifiersToEvent(flowModifiers, event)
+
+    let newVal = event;
+
+    if (isNative(flowModifiers) && useValue(flowModifiers)) {
+        newVal = event.target.value
+    }
+
+    ref.value = newVal
 }
 // ----------------------------------------------------------------------------------------------------
 
 
 // ----------------------------------------------------------------------------------------------------
-const addEventListener = function (event, listener, isNative, { el, vnode }) {
-    if (!isNative) {
+const addEventListener = function (event, context, { el, component }) {
+    if (!isNative(context.flowModifiers)) {
         // I'm not interested about a native event and the directive was used on a Vue component
         // TODO
     } else {
         // I'm interested about a native event or the directive was used on a native element
-        el.addEventListener(event, listener)
+        el.addEventListener(event, context.listener)
     }
 }
 
-const removeEventListener = function (event, listener, isNative, { el, vnode }) {
-    if (!isNative) {
+const removeEventListener = function (event, context, { el, component }) {
+    if (!isNative(context.flowModifiers)) {
         // TODO
     } else {
-        el.removeEventListener(event, listener)
+        el.removeEventListener(event, context.listener)
     }
 }
 
-const updateEventListener = function (event, prevListener, newListener, isNative, { el, vnode }) {
-    removeEventListener(event, prevListener, isNative, { el, vnode })
-    addEventListener(event, newListener, isNative, { el, vnode })
+const updateEventListener = function (event, context, { el, component }) {
+    removeEventListener(event, { ...context, listener: context.prevListener }, { el, component })
+
+    delete context.prevListener
+    addEventListener(event, context, { el, component })
 }
-
-
-
 // ----------------------------------------------------------------------------------------------------
 
 
 // ----------------------------------------------------------------------------------------------------
 const setupFromScratch = (el, ref, event, modifiers, vnode) => {
-    // convert the selected event modifiers into the appropriate functions
-    const eventModifiersArray = getModifiersFunctionsArray(modifiers)
 
-    // setRefGetListener is makeListener partial apllied on the eventModifiersArray
-    const setRefGetListener = makeListener(eventModifiersArray)
+    // is the vnode a Vue component?
+    const isVueComponent = vnode.component !== null
+
+    // convert the received modifiers
+    const flowModifiers = createFlowModifiers(modifiers, isVueComponent)
+
+    // setRefGetListener is makeListener partial applied on the flowModifiers
+    // flowModifiers never change, so it is useless recalculating it at each update
+    const setRefGetListener = makeListener(flowModifiers)
     const listener = setRefGetListener(ref)
 
-    // track if the directive was applied to a native element || the native modifier was used
-    const isNative = modifiers.native !== undefined || vnode.component === null
+    // create the context for this binding
+    const context = { setRefGetListener, listener, flowModifiers }
 
     // add the listener
-    addEventListener(event, listener, isNative, { el, vnode })
+    addEventListener(event, context, { el, component: vnode.component })
 
-    const cleanupStuff = { setRefGetListener, listener, isNative }
-    return cleanupStuff
+    return context
 }
 
 const mounted = (el, binding, vnode) => {
@@ -141,14 +174,12 @@ const mounted = (el, binding, vnode) => {
 
     console.log({ el, ref, event, modifiers, vnode })
 
-    const cleanupStuff = setupFromScratch(el, ref, event, modifiers, vnode)
 
-    // store some useful data for the cleanup/update phase using a unique key for identifying
-    // multiple v-flow directives on the same node
-    setPrivateBindingsHashMap(el)(binding)(cleanupStuff)
+    const context = setupFromScratch(el, ref, event, modifiers, vnode)
+    setPrivateBindingsHashMap(el, binding, context)
 }
 
-// update === the directive argument aka the ref has changed
+// update === something has changed, maybe the ref
 const updated = (el, binding, vnode) => {
 
     // binding check
@@ -159,42 +190,49 @@ const updated = (el, binding, vnode) => {
     // get info from the binding object
     const { ref, event, modifiers } = destructureBinding(binding)
 
-    // if the previous hook completed successfully, we could retrieve some useful stuff from the binding hash map
-    const cleanupStuff = getPrivateBindingsHashMap(el)(binding)
-    let newCleanupStuff = null
+    // if the previous hook completed successfully, we could retrieve some context from the binding hash map
+    // and then use it
+    const context = getPrivateBindingsHashMap(el, binding)
+    let newContext = null
 
-    if (cleanupStuff !== null) {
-        const { setRefGetListener, listener, isNative } = cleanupStuff
+    if (context !== null) {
+        const { setRefGetListener, listener } = context
 
+        // set the new ref
         const newListener = setRefGetListener(ref)
-        updateEventListener(event, listener, newListener, isNative, { el, vnode })
 
-        newCleanupStuff = { ...cleanupStuff, listener: newListener }
+        // update the context locally
+        newContext = { ...context, listener: newListener }
+
+        // update the listener
+        updateEventListener(event, { ...newContext, prevListener: listener }, { el, component: vnode.component })
 
     } else {
         // something went wrong in the previous hook, e.g. a wrong binding's argument/value
         // we have to setup all from scratch
 
-        newCleanupStuff = setupFromScratch(el, ref, event, modifiers, vnode)
+        newContext = setupFromScratch(el, ref, event, modifiers, vnode)
     }
 
-    // update the useful data stored
-    setPrivateBindingsHashMap(el)(binding)(newCleanupStuff)
+    // update the context
+    setPrivateBindingsHashMap(el, binding, newContext)
 }
 
 const unmounted = (el, binding, vnode) => {
-    // if the previous hooks completed successfully, we could retrieve some useful stuff from the binding hash map
-    const cleanupStuff = getPrivateBindingsHashMap(el)(binding)
+    // if the previous hook completed successfully, we could retrieve some context from the binding hash map
+    // and then use it
+    const context = getPrivateBindingsHashMap(el, binding)
 
-    if (cleanupStuff === null) {
+    if (context === null) {
         // if not, nothing never happened
-        return;
+        // no listeners, no context to erase
+        return
     }
-
-    const { listener, isNative } = cleanupStuff
     const { event } = destructureBinding(binding)
 
-    removeEventListener(event, listener, isNative, { el, vnode })
+    removeEventListener(event, context, { el, component: vnode.component })
+
+    // erase the context
     setPrivateBindingsHashMap(el)(binding)(null)
 }
 // ----------------------------------------------------------------------------------------------------
