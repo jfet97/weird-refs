@@ -225,7 +225,7 @@ const unmounted = (el, binding, vnode) => {
 
     if (context === null) {
         // if not, nothing never happened
-        // no listeners, no context to erase
+        // no listener, no context to erase
         return
     }
     const { event } = destructureBinding(binding)
